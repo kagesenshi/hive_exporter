@@ -76,12 +76,9 @@ if args.partition_column and args.num_partitions:
             .option('upperBound', str(upper_bound)))
 
 
-
 df = conn.load()
 df.createOrReplaceTempView('import_tbl')
-
 db, tbl = (args.hive_table or args.dbtable).split('.')
-
 
 log.info('Importing %s' % tbl)
 spark.sql('create database if not exists %s' % db)
