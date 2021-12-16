@@ -1,6 +1,6 @@
----------------------------------
-Export Hive datasets using Spark
----------------------------------
+---------------------------------------
+Export/Import Hive datasets using Spark
+---------------------------------------
 
 * hive_exporter_spark1.py - This script exports Hive dataset to local
   client node using Spark1
