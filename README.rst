@@ -56,4 +56,14 @@ Options:
 
 * ``-o`` - set this to drop hive tables before importing 
 
+--------------------------
+Ingesting data from RDBMS
+--------------------------
 
+`jdbc_loader.py` provides logic for ingesting data from RDBMS into Hive using
+Spark JDBC connector::
+
+   spark-submit --jars /usr/share/java/mysql-connector-java.jar jdbc_loader_spark2.py \
+       -u jdbc:mysql://user:password@my.server:3306/ingestion -t db.table -D com.mysql.jdbc.Driver
+
+(Note: pending implementation for partitioned ingested)
