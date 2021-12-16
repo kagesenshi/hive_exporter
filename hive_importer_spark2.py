@@ -12,6 +12,7 @@ parser = ArgumentParser()
 parser.add_argument('-i', '--importdir', required=True)
 parser.add_argument('-I', '--inputformat', default='parquet')
 parser.add_argument('-f', '--storageformat', default='parquet')
+parser.add_argument('-o', '--overwrite', action='store_true', default=False)
 args = parser.parse_args()
 
 for idx, d in enumerate(glob.glob('%s/*' % args.importdir)):
@@ -22,5 +23,7 @@ for idx, d in enumerate(glob.glob('%s/*' % args.importdir)):
     db = tbl.split('.')[0]
     log.info('Importing %s' % tbl)
     spark.sql('create database if not exists %s' % db)
+    if args.overwrite:
+        spark.sql('drop table if exists %s' % tbl)
     spark.sql('create table %s stored as %s as select * from import_%s' % (tbl, args.storageformat, idx))
     log.info('.. DONE')
