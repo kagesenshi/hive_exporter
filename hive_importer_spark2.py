@@ -1,3 +1,10 @@
+"""
+    Hive importer for spark2
+
+    To execute: 
+
+    spark-submit hive_importer_spark2.py
+"""
 from pyspark.shell import spark
 from argparse import ArgumentParser
 import glob

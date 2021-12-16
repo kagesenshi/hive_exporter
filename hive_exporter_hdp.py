@@ -1,5 +1,9 @@
 """
     Export Hive data and metadata from HDP
+
+    to execute:
+
+    spark-submit hive_exporter_hdp.py
 """
 from pyspark.shell import sqlContext as sqlc
 from pyspark.shell import sc

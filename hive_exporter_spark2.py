@@ -1,5 +1,9 @@
 """
-    Export Hive data and metadata from HDP
+    Export Hive data and metadata using spark2
+
+    to execute:
+
+    spark-submit hive_exporter_spark2.py
 """
 from pyspark.shell import spark
 import json
