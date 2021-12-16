@@ -1,5 +1,5 @@
 """
-    Export Hive data and metadata from HDP
+    Export Hive data and metadata using Spark1
 
     to execute:
 
