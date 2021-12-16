@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 import glob
 import os
 from argparse import ArgumentParser
+import logging
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('hive-importer-spark2')
@@ -14,10 +15,12 @@ parser.add_argument('-f', '--storageformat', default='parquet')
 args = parser.parse_args()
 
 for idx, d in enumerate(glob.glob('%s/*' % args.importdir)):
-    df = spark.read.format(args.inputformat).load(d)
-    df.createOrRegisterTempView('import_%s' % idx)
+    p = os.path.abspath(d)
+    df = spark.read.format(args.inputformat).load('file://%s' % p)
+    df.createOrReplaceTempView('import_%s' % idx)
     tbl = os.path.basename(d)
+    db = tbl.split('.')[0]
     log.info('Importing %s' % tbl)
-    spark.sql('create table %s stored as %s as select * from import_%s' % (tbl,
-        d))
+    spark.sql('create database if not exists %s' % db)
+    spark.sql('create table %s stored as %s as select * from import_%s' % (tbl, args.storageformat, idx))
     log.info('.. DONE')
