@@ -11,7 +11,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('hive-exporter-hdp')
 
-sc.setLogLevel("WARN")
+spark.sparkContext.setLogLevel("WARN")
 
 parser = ArgumentParser()
 parser.add_argument('-l', '--exportlist', help='List of tables to export', required=True)
