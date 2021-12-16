@@ -61,7 +61,7 @@ Ingesting data from RDBMS
 --------------------------
 
 ``jdbc_loader.py`` provides logic for ingesting data from RDBMS into Hive using
-`Spark JDBC<https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html>`_ connector.
+`Spark JDBC <https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html>`_ connector.
 
 Example for simple loading from MySQL::
 
