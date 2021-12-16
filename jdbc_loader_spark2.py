@@ -6,12 +6,14 @@
     spark-submit jdbc_loader_spark2.py
 """
 from pyspark.shell import spark
+from pyspark.sql import functions as F
 from argparse import ArgumentParser
 import glob
 import os
 from argparse import ArgumentParser
 import logging
 import sys
+import copy
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('jdbc-loader-spark2')
@@ -39,6 +41,13 @@ if not args.dbtable and not args.query:
     sys.exit(1)
 if not args.dbtable and not args.hive_table:
     print('-T/--hive-table is required when using with -q/--query')
+    sys.exit(1)
+
+if ((args.num_partitions and not args.partition_column) or
+   (args.partition_column and not args.num_partitions)):
+       print('-m/--num-partitions and -p/--partition-column must '
+        'be specified together')
+       sys.exit(1)
 
 conn = spark.read.format('jdbc').option('url', args.jdbc)
 if args.driver:
@@ -56,6 +65,17 @@ elif args.dbtable:
     conn = conn.option('dbtable', args.dbtable)
 else:
     raise AssertionError('Neither dbtable nor query are available')
+
+if args.partition_column and args.num_partitions:
+    dfx = copy.copy(conn).option('pushDownAggregate', 'true').load()
+    lower_bound, upper_bound = dfx.select(F.min(args.partition_column),
+        F.max(args.partition_column)).collect()[0]
+    conn = (conn.option('partitionColumn', args.partition_column)
+            .option('numPartitions', str(args.num_partitions))
+            .option('lowerBound', str(lower_bound))
+            .option('upperBound', str(upper_bound)))
+
+
 
 df = conn.load()
 df.createOrReplaceTempView('import_tbl')
