@@ -2,14 +2,14 @@
 Export Hive datasets using Spark
 ---------------------------------
 
- * hive_exporter_spark1.py - This script exports Hive dataset to local
-   client node using Spark1
+* hive_exporter_spark1.py - This script exports Hive dataset to local
+  client node using Spark1
 
- * hive_exporter_spark2.py - This script exports Hive dataset to local
-   client node using Spark2
+* hive_exporter_spark2.py - This script exports Hive dataset to local
+  client node using Spark2
 
- * hive_importer_spark2.py - This script imports exported dataset to Hive using
-   Spark2
+* hive_importer_spark2.py - This script imports exported dataset to Hive using
+  Spark2
 
 Exporting datasets
 -------------------
@@ -31,11 +31,11 @@ stored in parquet format.
 
 Options:
 
- * `-l` - (REQUIRED) to specify file containing list of tables to export
+* `-l` - (REQUIRED) to specify file containing list of tables to export
 
- * `-o` - to specify output directory for export (default: `$PWD/export`)
+* `-o` - to specify output directory for export (default: `$PWD/export`)
 
- * `-O` - to specify output format of export (default: `parquet`)
+* `-O` - to specify output format of export (default: `parquet`)
 
 
 Importing datasets
@@ -48,12 +48,12 @@ importer::
 
 Options:
 
- * `-i` - (REQUIRED) to specify the directory containing datasets to import
+* `-i` - (REQUIRED) to specify the directory containing datasets to import
 
- * `-I` - to specify input format of the datasets (default: `parquet`)
+* `-I` - to specify input format of the datasets (default: `parquet`)
 
- * `-f` - to specify Hive storage format for the tables (default: `parquet`)
+* `-f` - to specify Hive storage format for the tables (default: `parquet`)
 
- * `-o` - set this to drop hive tables before importing 
+* `-o` - set this to drop hive tables before importing 
 
 
