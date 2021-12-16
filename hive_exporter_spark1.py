@@ -3,7 +3,7 @@
 
     to execute:
 
-    spark-submit hive_exporter_hdp.py
+    spark-submit hive_exporter_spark1.py
 """
 from pyspark.shell import sqlContext as sqlc
 from pyspark.shell import sc
@@ -14,7 +14,7 @@ import re
 import logging
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger('hive-exporter-hdp')
+log = logging.getLogger('hive-exporter-spark1')
 
 sc.setLogLevel("WARN")
 
