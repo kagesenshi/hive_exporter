@@ -21,6 +21,8 @@ log = logging.getLogger('jdbc-loader-spark2')
 parser = ArgumentParser()
 parser.add_argument('-u', '--jdbc', required=True)
 parser.add_argument('-D', '--driver')
+parser.add_argument('-U', '--username')
+parser.add_argument('-P', '--password')
 parser.add_argument('-t', '--dbtable')
 parser.add_argument('-H', '--hive-table')
 parser.add_argument('-q', '--query')
@@ -49,9 +51,21 @@ if ((args.num_partitions and not args.partition_column) or
         'be specified together')
        sys.exit(1)
 
+
+if ((args.username and  not args.password) or
+   (args.password and not args.username)):
+       print('-U/--username and -P/--password must '
+        'be specified together')
+       sys.exit(1)
+
+
 conn = spark.read.format('jdbc').option('url', args.jdbc)
 if args.driver:
     conn = conn.option('driver', args.driver)
+if args.username:
+    conn = conn.option('user', args.username)
+if args.password:
+    conn = conn.option('password', args.password)
 if args.query_timeout:
     conn = conn.option('queryTimeout', args.query_timeout)
 if args.fetch_size:
@@ -83,6 +97,7 @@ db, tbl = (args.hive_table or args.dbtable).split('.')
 log.info('Importing %s' % tbl)
 spark.sql('create database if not exists %s' % db)
 if args.overwrite:
-   spark.sql('drop table if exists %s' % tbl)
-spark.sql('create table %s stored as %s as select * from import_tbl' % (tbl, args.storageformat))
+   spark.sql('drop table if exists %s.%s' % (db, tbl))
+spark.sql('create table %s.%s stored as %s as select * from import_tbl' % (db, tbl, args.storageformat))
 log.info('.. DONE')
+
