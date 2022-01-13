@@ -16,6 +16,7 @@ import os
 import logging
 import sys
 import copy
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('jdbc-loader-spark2')
@@ -38,6 +39,7 @@ parser.add_argument('-F', '--fetch-size')
 parser.add_argument('-I', '--init')
 parser.add_argument('-s', '--storageformat', default='parquet')
 parser.add_argument('-O', '--overwrite', action='store_true', default=False)
+parser.add_argument('-S', '--scratch-db', default='spark_scratch')
 args = parser.parse_args()
 
 if args.dbtable and args.query:
@@ -121,6 +123,7 @@ if args.last_modified_column:
     if last_modified:
         df = df.where(F.col(args.last_modified_column) > F.lit(last_modified))
 
+df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M')))
 df = df.cache()
 new_rows = df.count()
 
@@ -130,11 +133,11 @@ if not incremental_exists:
     df.createOrReplaceTempView('import_tbl')
     log.info('Importing %s' % tbl)
     spark.sql('create database if not exists %s' % db)
-    df.write.mode('overwrite').format(args.storageformat).saveAsTable('%s.%s' % (db, incremental_tbl))
+    df.write.mode('overwrite').format(args.storageformat).partitionBy('dl_ingest_date').saveAsTable('%s.%s' % (db, incremental_tbl))
     log.info('.. DONE')
 else:
     log.info('Importing incremental %s' % tbl)
-    df.write.mode('append').format(args.storageformat).saveAsTable('%s.%s' % (db, incremental_tbl))
+    df.write.mode('append').format(args.storageformat).partitionBy('dl_ingest_date').saveAsTable('%s.%s' % (db, incremental_tbl))
     log.info('.. DONE')
 
 key_columns = args.key_columns.split(',')
@@ -163,10 +166,11 @@ temp_table = 'temp_table_%s' % ''.join(random.sample(string.ascii_lowercase, 6))
 
 # materialize reconciled data
 df.createOrReplaceTempView(temp_table)
-df.write.mode('overwrite').saveAsTable('default.%s_persist' % (temp_table))
+spark.sql('create database if not exists %s' % args.scratch_db)
+df.write.mode('overwrite').saveAsTable('%s.%s_persist' % (args.scratch_db, temp_table))
 
 # move materialized data to destination table
-dfx = spark.sql('select * from default.%s_persist' % temp_table)
+dfx = spark.sql('select * from %s.%s_persist' % (args.scratch_db, temp_table))
 dfx.write.mode('overwrite').saveAsTable('%s.%s' % (db, tbl))
 
 log.info('.. DONE')
