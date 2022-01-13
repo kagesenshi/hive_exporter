@@ -98,14 +98,14 @@ are stored in partitions based on ingested date time.
 
 Example for incremental loading from MySQL, where `created_date` is the incremental column::
 
-   spark-submit --jars /usr/share/java/mysql-connector-java.jar jdbc_loader_spark2.py \
+   spark-submit --jars /usr/share/java/mysql-connector-java.jar jdbc_loader_incremental_append_spark2.py \
        -u jdbc:mysql://user:password@my.server:3306/db -t db.table -D com.mysql.jdbc.Driver -l created_date
 
 
 Incremental merge ingestion
 ----------------------------
 
-``jdbc_loader_incremental_append_spark2.py`` provides logic for incremental merge ingestion of data from 
+``jdbc_loader_incremental_merge_spark2.py`` provides logic for incremental merge ingestion of data from 
 RDBMS into Hive using `Spark JDBC <https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html>`_ connector.
 Incremental merge ingestion is suitable for updating tables incrementally, where older rows may get modified. Take 
 note that incremental merge ingestion DOES not delete records, and if there is a requirement to delete records, you
@@ -119,7 +119,7 @@ storing non-consolidated, incremental ingested data is stored.
 
 Example for incremental loading from MySQL, where `id` is the key column and `modified_date` is the last modified column::
 
-   spark-submit --jars /usr/share/java/mysql-connector-java.jar jdbc_loader_spark2.py \
+   spark-submit --jars /usr/share/java/mysql-connector-java.jar jdbc_loader_incremental_merge_spark2.py \
        -u jdbc:mysql://user:password@my.server:3306/db -t db.table -D com.mysql.jdbc.Driver -k id -l modified_date
 
 
