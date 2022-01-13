@@ -114,7 +114,7 @@ record is not yet deleted.
 
 Incremental merge requires a uniquely identifiable ID column or composite ID columns and a last modified timestamp or datetime
 column. Without the required columns, it is impossible to do incremental merge, and only full refresh can be done. Ingested
-data are stored in two tables, one table contains the actual expected data, and another table with `_incremental` suffix on its name
+data are stored in two tables, one table contains the actual expected data, and another table with ``_incremental`` suffix on its name
 storing non-consolidated, incremental ingested data is stored.
 
 Example for incremental loading from MySQL, where ``id`` is the key column and ``modified_date`` is the last modified column::
