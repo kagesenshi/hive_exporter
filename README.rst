@@ -96,7 +96,7 @@ Incremental append requires one (1) column that shall be used to identify new va
 selected from. This column  can be a created date column, or an incremental running number id column. Ingested data
 are stored in partitions based on ingested date time.
 
-Example for incremental loading from MySQL, where `created_date` is the incremental column::
+Example for incremental loading from MySQL, where ``created_date`` is the incremental column::
 
    spark-submit --jars /usr/share/java/mysql-connector-java.jar jdbc_loader_incremental_append_spark2.py \
        -u jdbc:mysql://user:password@my.server:3306/db -t db.table -D com.mysql.jdbc.Driver -l created_date
@@ -108,8 +108,8 @@ Incremental merge ingestion
 ``jdbc_loader_incremental_merge_spark2.py`` provides logic for incremental merge ingestion of data from 
 RDBMS into Hive using `Spark JDBC <https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html>`_ connector.
 Incremental merge ingestion is suitable for updating tables incrementally, where older rows may get modified. Take 
-note that incremental merge ingestion DOES not delete records, and if there is a requirement to delete records, you
-will need to make sure that application implements soft delete, and provide a deletion marker column that is null when
+note that incremental merge ingestion **DOES NOT** delete records, and if there is a requirement to delete records, you
+will need to make sure that application implements soft delete, and provide a deletion marker column that is ``null`` when
 record is not yet deleted.
 
 Incremental merge requires a uniquely identifiable ID column or composite ID columns and a last modified timestamp or datetime
@@ -117,9 +117,20 @@ column. Without the required columns, it is impossible to do incremental merge, 
 data are stored in two tables, one table contains the actual expected data, and another table with `_incremental` suffix on its name
 storing non-consolidated, incremental ingested data is stored.
 
-Example for incremental loading from MySQL, where `id` is the key column and `modified_date` is the last modified column::
+Example for incremental loading from MySQL, where ``id`` is the key column and ``modified_date`` is the last modified column::
 
    spark-submit --jars /usr/share/java/mysql-connector-java.jar jdbc_loader_incremental_merge_spark2.py \
        -u jdbc:mysql://user:password@my.server:3306/db -t db.table -D com.mysql.jdbc.Driver -k id -l modified_date
 
+Performance Consideration
+--------------------------
 
+For best performance of ingestion, it is required that source systems indexes following columns:
+
+* ID column(s)
+
+* Last modified date column
+
+* Created date column
+
+* Partitioned ingest column 
