@@ -30,6 +30,7 @@ parser.add_argument('-t', '--dbtable')
 parser.add_argument('-k', '--key-columns', help='Comma separated list of columns that represent keys', required=True)
 parser.add_argument('-l', '--last-modified-column', required=True)
 parser.add_argument('-L', '--last-modified')
+parser.add_argument('-d', '--deleted-column')
 parser.add_argument('-H', '--hive-table')
 parser.add_argument('-q', '--query')
 parser.add_argument('-p', '--partition-column')
@@ -156,6 +157,9 @@ reconcile_df = df.select(
     *df.columns
 )
 reconcile_df = reconcile_df.where(F.col(row_num_col) == F.lit(1)).drop(row_num_col)
+if args.deleted_column:
+    reconcile_df = reconcile_df.where(F.col(args.deleted_column).isNull())
+
 reconcile_df.createOrReplaceTempView('import_tbl')
 
 log.info('Importing/Updating %s' % tbl)
