@@ -17,6 +17,7 @@ import logging
 import sys
 import copy
 from datetime import datetime
+from spark_loaders import incremental_append_ingestion
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('jdbc-loader-spark2')
@@ -97,39 +98,7 @@ if args.partition_column and args.num_partitions:
 
 db, tbl = (args.hive_table or args.dbtable).split('.')
 
-incremental_exists = False
-if db in [d.name for d in spark.catalog.listDatabases()]:
-    tables = [t.name for t in spark.catalog.listTables(db)]
-    if tbl in tables:
-        incremental_exists = True
-
-if args.incremental_column and not args.last_value:
-    last_value = None
-    if incremental_exists:
-        last_value = spark.sql('select max(%s) from %s.%s' % (args.incremental_column, db, tbl)).take(1)[0][0]
-else:
-    last_value = args.last_value
-
 # load data from source
 df = conn.load()
 
-df.show()
-
-if args.incremental_column:
-    if last_value:
-        df = df.where(F.col(args.incremental_column) > F.lit(last_value))
-
-df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M')))
-df = df.cache()
-new_rows = df.count()
-
-if not incremental_exists:
-    log.info('Importing %s' % tbl)
-    spark.sql('create database if not exists %s' % db)
-    df.write.mode('overwrite').format(args.storageformat).partitionBy('dl_ingest_date').saveAsTable('%s.%s' % (db, tbl))
-    log.info('.. DONE')
-else:
-    log.info('Importing incremental %s' % tbl)
-    df.write.mode('append').format(args.storageformat).partitionBy('dl_ingest_date').saveAsTable('%s.%s' % (db, tbl))
-    log.info('.. DONE')
-
+incremental_append_ingestion(spark, df, db, tbl, args.incremental_column, args.last_value, args.storageformat)

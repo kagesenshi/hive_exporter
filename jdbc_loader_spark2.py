@@ -14,6 +14,7 @@ from argparse import ArgumentParser
 import logging
 import sys
 import copy
+from spark_loaders import full_ingestion
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('jdbc-loader-spark2')
@@ -91,13 +92,7 @@ if args.partition_column and args.num_partitions:
 
 
 df = conn.load()
-df.createOrReplaceTempView('import_tbl')
 db, tbl = (args.hive_table or args.dbtable).split('.')
 
-log.info('Importing %s' % tbl)
-spark.sql('create database if not exists %s' % db)
-if args.overwrite:
-   spark.sql('drop table if exists %s.%s' % (db, tbl))
-spark.sql('create table %s.%s stored as %s as select * from import_tbl' % (db, tbl, args.storageformat))
-log.info('.. DONE')
+full_ingestion(spark, df, db, tbl, args.overwrite, args.storageformat)
 

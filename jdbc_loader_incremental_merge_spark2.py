@@ -17,6 +17,7 @@ import logging
 import sys
 import copy
 from datetime import datetime
+from spark_loaders import incremental_merge_ingestion
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('jdbc-loader-spark2')
@@ -100,82 +101,7 @@ if args.partition_column and args.num_partitions:
 
 db, tbl = (args.hive_table or args.dbtable).split('.')
 
-incremental_exists = False
-historical_exists = False
-incremental_tbl = '%s_incremental' % tbl
-if db in [d.name for d in spark.catalog.listDatabases()]:
-    tables = [t.name for t in spark.catalog.listTables(db)]
-    if tbl in tables:
-        historical_exists = True
-    if incremental_tbl in tables:
-        incremental_exists = True
-
-if args.last_modified_column and not args.last_modified:
-    last_modified = None
-    if incremental_exists:
-        last_modified = spark.sql('select max(%s) from %s.%s' % (args.last_modified_column, db, incremental_tbl)).take(1)[0][0]
-else:
-    last_modified = args.last_modified
-
 # load data from source
 df = conn.load()
 
-if args.last_modified_column:
-    if last_modified:
-        df = df.where(F.col(args.last_modified_column) > F.lit(last_modified))
-
-df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M')))
-df = df.cache()
-new_rows = df.count()
-
-df.createOrReplaceTempView('import_tbl')
-
-if not incremental_exists:
-    df.createOrReplaceTempView('import_tbl')
-    log.info('Importing %s' % tbl)
-    spark.sql('create database if not exists %s' % db)
-    df.write.mode('overwrite').format(args.storageformat).partitionBy('dl_ingest_date').saveAsTable('%s.%s' % (db, incremental_tbl))
-    log.info('.. DONE')
-else:
-    log.info('Importing incremental %s' % tbl)
-    df.write.mode('append').format(args.storageformat).partitionBy('dl_ingest_date').saveAsTable('%s.%s' % (db, incremental_tbl))
-    log.info('.. DONE')
-
-key_columns = args.key_columns.split(',')
-
-# get old data in hive
-df = spark.sql('select * from %s.%s' % (db, incremental_tbl))
-
-# reconcile and select latest record
-row_num_col = 'row_num_%s' % ''.join(random.sample(string.ascii_lowercase, 6))
-windowSpec = (
-    Window.partitionBy(*key_columns)
-          .orderBy(F.col(args.last_modified_column).desc())
-)
-reconcile_df = df.select(
-    F.row_number().over(windowSpec).alias(row_num_col),
-    *df.columns
-)
-reconcile_df = reconcile_df.where(F.col(row_num_col) == F.lit(1)).drop(row_num_col)
-if args.deleted_column:
-    reconcile_df = reconcile_df.where(F.col(args.deleted_column).isNull())
-
-reconcile_df.createOrReplaceTempView('import_tbl')
-
-log.info('Importing/Updating %s' % tbl)
-
-df = reconcile_df.cache()
-new_total_rows = df.count()
-temp_table = 'temp_table_%s' % ''.join(random.sample(string.ascii_lowercase, 6))
-
-# materialize reconciled data
-df.createOrReplaceTempView(temp_table)
-spark.sql('create database if not exists %s' % args.scratch_db)
-df.write.mode('overwrite').saveAsTable('%s.%s_persist' % (args.scratch_db, temp_table))
-
-# move materialized data to destination table
-dfx = spark.sql('select * from %s.%s_persist' % (args.scratch_db, temp_table))
-dfx.write.mode('overwrite').saveAsTable('%s.%s' % (db, tbl))
-
-log.info('.. DONE')
-
+incremental_merge_ingestion(spark, df, db, tbl, args.key_columns.split(','), args.last_modified_column, args.last_modified, args.deleted_column)
