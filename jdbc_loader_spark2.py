@@ -96,3 +96,4 @@ db, tbl = (args.hive_table or args.dbtable).split('.')
 
 full_ingestion(spark, df, db, tbl, args.overwrite, args.storageformat)
 
+

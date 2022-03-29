@@ -17,6 +17,7 @@ import logging
 import sys
 import copy
 from datetime import datetime
+from spark_loaders import incremental_append_ingestion
 from spark_loaders import incremental_merge_ingestion
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,8 @@ parser.add_argument('-t', '--dbtable')
 parser.add_argument('-k', '--key-columns', help='Comma separated list of columns that represent keys', required=True)
 parser.add_argument('-l', '--last-modified-column', required=True)
 parser.add_argument('-L', '--last-modified')
+parser.add_argument('-r', '--incremental-column', required=True)
+parser.add_argument('-R', '--last-value')
 parser.add_argument('-d', '--deleted-column')
 parser.add_argument('-H', '--hive-table')
 parser.add_argument('-q', '--query')
@@ -67,8 +70,6 @@ if ((args.username and  not args.password) or
         'be specified together')
        sys.exit(1)
 
-
-
 conn = spark.read.format('jdbc').option('url', args.jdbc)
 if args.driver:
     conn = conn.option('driver', args.driver)
@@ -104,4 +105,6 @@ db, tbl = (args.hive_table or args.dbtable).split('.')
 # load data from source
 df = conn.load()
 
+incremental_append_ingestion(spark, df, db, tbl, args.incremental_column, args.last_value, args.storageformat)
 incremental_merge_ingestion(spark, df, db, tbl, args.key_columns.split(','), args.last_modified_column, args.last_modified, args.deleted_column)
+

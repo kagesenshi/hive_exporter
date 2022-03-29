@@ -12,28 +12,30 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('spark-ingestor')
 
-def full_ingestion(spark, df, hive_db, hive_tbl, drop=False, storageformat='parquet'):
-    df.createOrReplaceTempView('import_tbl')
+def full_ingestion(spark, df, hive_db, hive_tbl, drop=False, storageformat='parquet'):    
     db, tbl = hive_db, hive_tbl
-
+    
     df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M%S')))
-    df = df.cache()
+    df = df.persist()
+    df.createOrReplaceTempView('import_tbl')
+    log.info('show count %s' % tbl)
+    new_rows = df.count()
+    print("Total number of records in df:", df.count())
+    
     log.info('Importing %s' % tbl)
-
-    num_rows = df.count()
     spark.sql('create database if not exists %s' % db)
     if drop:
        spark.sql('drop table if exists %s.%s' % (db, tbl))
     spark.sql('create table if not exists %s.%s stored as %s as select * from import_tbl limit 0' % (db, tbl, storageformat))
-    df.write.format(storageformat).insertInto('%s.%s' % (db, tbl), overwrite=True)
-    log.info('.. DONE')
+    df.write.format(storageformat).insertInto('%s.%s' % (db, tbl), overwrite=True)    
+    log.info('.. DONE')   
 
 def incremental_append_ingestion(spark, df, hive_db, hive_tbl, incremental_column, last_value=None, storageformat='parquet'):
     db, tbl = hive_db, hive_tbl
     incremental_exists = False
-    if db in [d.name for d in spark.catalog.listDatabases()]:
-        tables = [t.name for t in spark.catalog.listTables(db)]
-        if tbl in tables:
+    if db.lower() in [d.name.lower() for d in spark.catalog.listDatabases()]:
+        tables = [t.name.lower() for t in spark.catalog.listTables(db)]
+        if tbl.lower() in tables:
             incremental_exists = True
 
     if incremental_column and not last_value:
@@ -44,8 +46,9 @@ def incremental_append_ingestion(spark, df, hive_db, hive_tbl, incremental_colum
         df = df.where(F.col(incremental_column) > F.lit(last_value))
 
     df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M%S')))
-    df = df.cache()
+    df = df.persist()
     new_rows = df.count()
+    print("Total number of records in df:", df.count())
 
     if not incremental_exists:
         log.info('Importing %s' % tbl)
@@ -58,15 +61,14 @@ def incremental_append_ingestion(spark, df, hive_db, hive_tbl, incremental_colum
         log.info('.. DONE')
 
 
-
 def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_modified_column, last_modified=None, deleted_column=None, scratch_db='spark_scratch', 
         storageformat='parquet'):
     db, tbl = hive_db, hive_tbl
     incremental_exists = False
     incremental_tbl = '%s_incremental' % tbl
-    if db in [d.name for d in spark.catalog.listDatabases()]:
-        tables = [t.name for t in spark.catalog.listTables(db)]
-        if incremental_tbl in tables:
+    if db.lower() in [d.name.lower() for d in spark.catalog.listDatabases()]:
+        tables = [t.name.lower() for t in spark.catalog.listTables(db)]
+        if incremental_tbl.lower() in tables:
             incremental_exists = True
     if last_modified_column and not last_modified:
         if incremental_exists:
@@ -76,8 +78,9 @@ def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_
         df = df.where(F.col(last_modified_column) > F.lit(last_modified))
 
     df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M%S')))
-    df = df.cache()
+    df = df.persist()
     new_rows = df.count()
+    print("Total number of records in df:", df.count())
 
     if not incremental_exists:
         log.info('Importing %s' % tbl)
@@ -109,8 +112,9 @@ def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_
     
     log.info('Importing/Updating %s' % tbl)
     
-    df = reconcile_df.cache()
+    df = reconcile_df.persist()
     new_total_rows = df.count()
+    print("Total number of new records in df:", df.count())
     temp_table = 'temp_table_%s' % ''.join(random.sample(string.ascii_lowercase, 6))
     
     # materialize reconciled data
@@ -125,5 +129,6 @@ def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_
     
     log.info('.. DONE')
     
+
 
 

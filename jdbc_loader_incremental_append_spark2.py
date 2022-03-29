@@ -22,14 +22,15 @@ from spark_loaders import incremental_append_ingestion
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('jdbc-loader-spark2')
 
+
 parser = ArgumentParser()
 parser.add_argument('-u', '--jdbc', required=True)
 parser.add_argument('-D', '--driver')
 parser.add_argument('-U', '--username')
 parser.add_argument('-P', '--password')
 parser.add_argument('-t', '--dbtable')
-parser.add_argument('-l', '--incremental-column', required=True)
-parser.add_argument('-L', '--last-value')
+parser.add_argument('-r', '--incremental-column', required=True)
+parser.add_argument('-R', '--last-value')
 parser.add_argument('-H', '--hive-table')
 parser.add_argument('-q', '--query')
 parser.add_argument('-p', '--partition-column')
@@ -87,14 +88,18 @@ elif args.dbtable:
 else:
     raise AssertionError('Neither dbtable nor query are available')
 
+dburi = 'oracle'
 dfx = copy.copy(conn).option('pushDownAggregate', 'true').load()
 if args.partition_column and args.num_partitions:
     lower_bound, upper_bound = dfx.select(F.min(args.partition_column),
         F.max(args.partition_column)).collect()[0]
-    conn = (conn.option('partitionColumn', args.partition_column)
-            .option('numPartitions', str(args.num_partitions))
-            .option('lowerBound', str(lower_bound))
-            .option('upperBound', str(upper_bound)))
+    if dburi in args.jdbc:
+	    conn = (conn.option('partitionColumn', args.partition_column)
+	            .option('numPartitions', str(args.num_partitions))
+	            .option('lowerBound',  str(lower_bound))
+	            .option('upperBound',  str(upper_bound))
+	            .option('oracle.jdbc.mapDateToTimestamp', 'false')
+	            .option('sessionInitStatement', 'ALTER SESSION SET NLS_TIMESTAMP_FORMAT="YYYY-MM-DD HH24:MI:SS.FF"'))
 
 db, tbl = (args.hive_table or args.dbtable).split('.')
 
