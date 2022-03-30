@@ -12,6 +12,88 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('spark-ingestor')
 
+def add_common_arguments(parser):
+    parser.add_argument('-u', '--jdbc', required=True)
+    parser.add_argument('-D', '--driver')
+    parser.add_argument('-U', '--username')
+    parser.add_argument('-P', '--password')
+    parser.add_argument('-t', '--dbtable')
+    parser.add_argument('-H', '--hive-table')
+    parser.add_argument('-q', '--query')
+    parser.add_argument('-p', '--partition-column')
+    parser.add_argument('-m', '--num-partitions')
+    parser.add_argument('-T', '--query-timeout')
+    parser.add_argument('-F', '--fetch-size')
+    parser.add_argument('-I', '--init')
+    parser.add_argument('-s', '--storageformat', default='parquet')
+    parser.add_argument('-O', '--overwrite', action='store_true', default=False)
+    parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    
+def validate_common_args(args):
+    if args.dbtable and args.query:
+        print('Either -t/--dbtable or -q/--query shall be specified, but not both')
+        sys.exit(1)
+    if not args.dbtable and not args.query:
+        print('Either -t/--dbtable or -q/--query must be specified')
+        sys.exit(1)
+    if not args.dbtable and not args.hive_table:
+        print('-T/--hive-table is required when using with -q/--query')
+        sys.exit(1)
+    
+    if ((args.num_partitions and not args.partition_column) or
+       (args.partition_column and not args.num_partitions)):
+           print('-m/--num-partitions and -p/--partition-column must '
+            'be specified together')
+           sys.exit(1)
+    
+    if ((args.username and  not args.password) or
+       (args.password and not args.username)):
+           print('-U/--username and -P/--password must '
+            'be specified together')
+           sys.exit(1)
+    
+def conn_from_args(spark, args):
+    if args.verbose:
+        spark.sparkContext.setLogLevel("INFO")
+    else:
+        spark.sparkContext.setLogLevel("WARN")
+    conn = spark.read.format('jdbc').option('url', args.jdbc)
+    if args.driver:
+        conn = conn.option('driver', args.driver)
+    if args.username:
+        conn = conn.option('user', args.username)
+    if args.password:
+        conn = conn.option('password', args.password)
+    if args.query_timeout:
+        conn = conn.option('queryTimeout', args.query_timeout)
+    if args.fetch_size:
+        conn = conn.option('fetchSize', args.fetch_size)
+    if args.init:
+        conn = conn.option('sessionInitStatement', args.init)
+    
+    if args.query:
+        conn = conn.option('query', args.query)
+    elif args.dbtable:
+        conn = conn.option('dbtable', args.dbtable)
+    else:
+        raise AssertionError('Neither dbtable nor query are available')
+    
+    if args.partition_column and args.num_partitions:
+        dfx = copy.copy(conn).option('pushDownAggregate', 'true').load()
+        lower_bound, upper_bound = dfx.select(F.min(args.partition_column),
+            F.max(args.partition_column)).collect()[0]
+        conn = (conn.option('partitionColumn', args.partition_column)
+                .option('numPartitions', str(args.num_partitions))
+                .option('lowerBound', str(lower_bound))
+                .option('upperBound', str(upper_bound)))
+    
+    if args.jdbc.startswith('oracle'):
+        conn = (conn
+             .option('oracle.jdbc.mapDateToTimestamp', 'false')
+             .option('sessionInitStatement', 'ALTER SESSION SET NLS_TIMESTAMP_FORMAT="YYYY-MM-DD HH24:MI:SS.FF"'))
+    
+    return conn
+
 def full_ingestion(spark, df, hive_db, hive_tbl, drop=False, storageformat='parquet'):    
     db, tbl = hive_db, hive_tbl
     
@@ -20,7 +102,7 @@ def full_ingestion(spark, df, hive_db, hive_tbl, drop=False, storageformat='parq
     df.createOrReplaceTempView('import_tbl')
     log.info('show count %s' % tbl)
     new_rows = df.count()
-    print("Total number of records in df:", df.count())
+    log.info("Ingesting %s new rows" % new_rows)
     
     log.info('Importing %s' % tbl)
     spark.sql('create database if not exists %s' % db)
@@ -28,7 +110,9 @@ def full_ingestion(spark, df, hive_db, hive_tbl, drop=False, storageformat='parq
        spark.sql('drop table if exists %s.%s' % (db, tbl))
     spark.sql('create table if not exists %s.%s stored as %s as select * from import_tbl limit 0' % (db, tbl, storageformat))
     df.write.format(storageformat).insertInto('%s.%s' % (db, tbl), overwrite=True)    
-    log.info('.. DONE')   
+    log.info('.. DONE')
+
+    return new_rows
 
 def incremental_append_ingestion(spark, df, hive_db, hive_tbl, incremental_column, last_value=None, storageformat='parquet'):
     db, tbl = hive_db, hive_tbl
@@ -48,7 +132,7 @@ def incremental_append_ingestion(spark, df, hive_db, hive_tbl, incremental_colum
     df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M%S')))
     df = df.persist()
     new_rows = df.count()
-    print("Total number of records in df:", df.count())
+    log.info("Ingesting %s new rows" % new_rows)
 
     if not incremental_exists:
         log.info('Importing %s' % tbl)
@@ -60,9 +144,14 @@ def incremental_append_ingestion(spark, df, hive_db, hive_tbl, incremental_colum
         df.write.mode('append').format(storageformat).partitionBy('dl_ingest_date').saveAsTable('%s.%s' % (db, tbl))
         log.info('.. DONE')
 
+    return new_rows
 
-def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_modified_column, last_modified=None, deleted_column=None, scratch_db='spark_scratch', 
+def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns,
+        last_modified_column, last_modified=None, 
+        incremental_column=None, last_value=None,
+        deleted_column=None, scratch_db='spark_scratch', 
         storageformat='parquet'):
+
     db, tbl = hive_db, hive_tbl
     incremental_exists = False
     incremental_tbl = '%s_incremental' % tbl
@@ -73,14 +162,24 @@ def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_
     if last_modified_column and not last_modified:
         if incremental_exists:
             last_modified = spark.sql('select max(%s) from %s.%s' % (last_modified_column, db, incremental_tbl)).take(1)[0][0]
+    if incremental_column and not last_value:
+        if incremental_exists:
+            last_value = spark.sql('select max(%s) from %s.%s' %
+                    (incremental_column, db, incremental_tbl)).take(1)[0][0]
 
-    if last_modified_column and last_modified:
+    if (last_modified_column and last_modified 
+            and incremental_column and last_value):
+        df = df.where((F.col(incremental_column) > F.lit(last_value)) |
+                (F.col(last_modified_column) > F.lit(last_modified)))
+    elif last_modified_column and last_modified:
         df = df.where(F.col(last_modified_column) > F.lit(last_modified))
+    elif incremental_column and last_value:
+        df = df.where(F.col(incremental_column) > F.lit(last_value))
 
     df = df.withColumn('dl_ingest_date', F.lit(datetime.now().strftime('%Y%m%dT%H%M%S')))
     df = df.persist()
     new_rows = df.count()
-    print("Total number of records in df:", df.count())
+    log.info("Ingesting %s new rows" % new_rows)
 
     if not incremental_exists:
         log.info('Importing %s' % tbl)
@@ -113,8 +212,6 @@ def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_
     log.info('Importing/Updating %s' % tbl)
     
     df = reconcile_df.persist()
-    new_total_rows = df.count()
-    print("Total number of new records in df:", df.count())
     temp_table = 'temp_table_%s' % ''.join(random.sample(string.ascii_lowercase, 6))
     
     # materialize reconciled data
@@ -129,6 +226,6 @@ def incremental_merge_ingestion(spark, df, hive_db, hive_tbl, key_columns, last_
     
     log.info('.. DONE')
     
-
+    return new_rows
 
 
