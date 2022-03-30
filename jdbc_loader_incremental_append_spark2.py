@@ -41,7 +41,17 @@ db, tbl = (args.hive_table or args.dbtable).split('.')
 # load data from source
 df = conn.load()
 
-incremental_append_ingestion(spark, df, db, tbl, 
+source_count = copy.copy(conn).option('pushDownAggregate',
+        'true').load().count()
+
+ingested_count = incremental_append_ingestion(spark, df, db, tbl, 
         args.incremental_column, 
         args.last_value, 
         args.storageformat)
+
+dest_count = spark.sql('select * from %s.%s' % (db, tbl)).count()
+
+log.info("Source rows = %s" % source_count)
+log.info("Ingested rows = %s" % ingested_count)
+log.info("Destination rows = %s" % dest_count)
+

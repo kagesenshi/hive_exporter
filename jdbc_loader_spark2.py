@@ -30,5 +30,12 @@ conn = conn_from_args(spark, args)
 df = conn.load()
 db, tbl = (args.hive_table or args.dbtable).split('.')
 
-full_ingestion(spark, df, db, tbl, args.overwrite, args.storageformat)
+source_count = copy.copy(conn).option('pushDownAggregate',
+        'true').load().count()
 
+ingested_count = full_ingestion(spark, df, db, tbl, args.overwrite, args.storageformat)
+dest_count = spark.sql('select * from %s.%s' % (db, tbl)).count()
+
+log.info("Source rows = %s" % source_count)
+log.info("Ingested rows = %s" % ingested_count)
+log.info("Destination rows = %s" % dest_count)

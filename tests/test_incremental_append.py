@@ -4,6 +4,7 @@ import string
 import time
 import subprocess
 import os
+import sys
 
 SPARK_SUBMIT='spark2-submit'
 BEELINE = 'spark2-beeline'
@@ -22,13 +23,49 @@ db = MySQLdb.connect(
 
 here = os.path.dirname(__file__)
 
-clean_cmd = [BEELINE, '-u',
+def delete_table():
+    clean_cmd = [BEELINE, '-u',
         'jdbc:hive2://localhost:10000',
         '--outputformat=csv',
         '--showHeader=false',
-        '-e', "drop table ingest_test.data_append"]
-p = subprocess.Popen(clean_cmd, stdout=subprocess.PIPE)
-p.wait()
+        '-e', "drop table if exists ingest_test.data_append"]
+    p = subprocess.Popen(clean_cmd, stdout=subprocess.PIPE)
+    if p.wait():
+        sys.exit(1)
+
+def ingest_data():
+    cmd = [SPARK_SUBMIT, os.path.join(here,'..',
+        'jdbc_loader_incremental_append_spark2.py'), 
+        '-u', 'jdbc:mysql://%s/ingest_test' % (host), 
+        '-D', 'com.mysql.jdbc.Driver',
+        '--user', user,
+        '--password', password,
+        '-t','ingest_test.data_append',
+        '-p', 'id',
+        '--num-partitions', '2',
+        '--incremental-column', 'id']
+    
+    p = subprocess.Popen(cmd)
+    if p.wait():
+        sys.exist(1)
+    
+
+def count_hive():
+    count_cmd = [BEELINE, '-u',
+        'jdbc:hive2://localhost:10000',
+        '--outputformat=csv',
+        '--showHeader=false',
+        '-e', "select count(1) as c from ingest_test.data_append"]
+
+
+    p = subprocess.Popen(count_cmd, stdout=subprocess.PIPE)
+    if p.wait():
+        sys.exit(1)
+
+    return int(p.stdout.read().decode('utf8').strip()[1:-1])
+
+
+delete_table()
 
 cursor = db.cursor()
 
@@ -42,40 +79,19 @@ for i in range(0,10):
     cursor.execute('insert into data_append(id, created) values (%s, now())', [i])
 db.commit()
 
-cmd = [SPARK_SUBMIT, os.path.join(here,'..',
-    'jdbc_loader_incremental_append_spark2.py'), 
-    '-u', 'jdbc:mysql://%s/ingest_test' % (host), 
-    '-D', 'com.mysql.jdbc.Driver',
-    '--user', user,
-    '--password', password,
-    '-t','ingest_test.data_append',
-    '-p', 'id',
-    '--num-partitions', '2',
-    '--incremental-column', 'id']
 
-p = subprocess.Popen(cmd)
-p.wait()
+ingest_data()
+count = count_hive()
+print(count)
+assert count == 10
 
-count_cmd = [BEELINE, '-u',
-        'jdbc:hive2://localhost:10000',
-        '--outputformat=csv',
-        '--showHeader=false',
-        '-e', "select count(1) as c from ingest_test.data_append"]
-
-p = subprocess.Popen(count_cmd, stdout=subprocess.PIPE)
-p.wait()
-
-assert int(p.stdout.read().decode('utf8').strip()[1:-1]) == 10
 
 for i in range(10,20):
     cursor.execute('insert into data_append(id, created) values (%s, now())', [i])
 db.commit()
 
-p = subprocess.Popen(cmd)
-p.wait()
-
-p = subprocess.Popen(count_cmd, stdout=subprocess.PIPE)
-p.wait()
-
-assert int(p.stdout.read().decode('utf8').strip()[1:-1]) == 20
+ingest_data()
+count = count_hive()
+print(count)
+assert count == 20
 print('DONE')

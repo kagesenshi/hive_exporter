@@ -41,8 +41,10 @@ db, tbl = (args.hive_table or args.dbtable).split('.')
 
 # load data from source
 df = conn.load()
+source_count = copy.copy(conn).option('pushDownAggregate',
+        'true').load().count()
 
-incremental_merge_ingestion(spark, df, db, tbl, 
+ingested_count = incremental_merge_ingestion(spark, df, db, tbl, 
         args.key_columns.split(','), 
         args.last_modified_column, 
         args.last_modified, 
@@ -51,4 +53,10 @@ incremental_merge_ingestion(spark, df, db, tbl,
         args.deleted_column,
         args.scratch_db,
         args.storageformat)
+
+dest_count = spark.sql('select * from %s.%s' % (db, tbl)).count()
+
+log.info("Source rows = %s" % source_count)
+log.info("Ingested rows = %s" % ingested_count)
+log.info("Destination rows = %s" % dest_count)
 
