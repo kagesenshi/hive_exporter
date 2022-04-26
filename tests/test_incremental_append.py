@@ -43,11 +43,12 @@ def ingest_data():
         '-t','ingest_test.data_append',
         '-p', 'id',
         '--num-partitions', '2',
+        '--output-partition', 'date',
         '--incremental-column', 'id']
     
     p = subprocess.Popen(cmd)
     if p.wait():
-        sys.exist(1)
+        sys.exit(1)
     
 
 def count_hive():
@@ -69,25 +70,30 @@ delete_table()
 
 cursor = db.cursor()
 
-cursor.execute('create database if not exists ingest_test')
+cursor.execute('create database if not exists ingest_test;')
 
-cursor.execute('use ingest_test')
-cursor.execute('drop table if exists data_append')
-cursor.execute('create table data_append(id int, value varchar(30), created datetime)')
+cursor.execute('use ingest_test;')
+cursor.execute('drop table if exists data_append;')
+cursor.execute('''
+    create table data_append(
+        id int, value varchar(30), created datetime, 
+        `date` varchar(10));''')
 
 for i in range(0,10):
-    cursor.execute('insert into data_append(id, created) values (%s, now())', [i])
+    cursor.execute(
+        '''insert into data_append(id, created, `date`) values (%s, now(),
+        date_format(now(), '%%Y-%%m-%%d'));''', [i])
 db.commit()
 
-
+print('start_ingest')
 ingest_data()
 count = count_hive()
 print(count)
 assert count == 10
 
-
 for i in range(10,20):
-    cursor.execute('insert into data_append(id, created) values (%s, now())', [i])
+    cursor.execute('''insert into data_append(id, created, `date`) values (%s,
+    now(), date_format(now(), '%%Y-%%m-%%d'));''', [i])
 db.commit()
 
 ingest_data()

@@ -44,10 +44,15 @@ df = conn.load()
 source_count = copy.copy(conn).option('pushDownAggregate',
         'true').load().count()
 
+output_partitions = []
+if args.output_partition_columns:
+    output_partitions = args.output_partition_columns.split(',')
+
 ingested_count = incremental_append_ingestion(spark, df, db, tbl, 
         args.incremental_column, 
         args.last_value, 
-        args.storageformat)
+        args.storageformat,
+        output_partitions=output_partitions)
 
 dest_count = spark.sql('select * from %s.%s' % (db, tbl)).count()
 

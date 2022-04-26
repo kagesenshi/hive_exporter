@@ -54,6 +54,7 @@ def ingest_data():
         '-p', 'id',
         '-k', 'id',
         '--num-partitions', '2',
+        '--output-partition-columns', 'date',
         '--incremental-column', 'id',
         '--last-modified-column', 'last_modified']
     
@@ -84,11 +85,16 @@ cursor.execute('create database if not exists ingest_test')
 
 cursor.execute('use ingest_test')
 cursor.execute('drop table if exists data')
-cursor.execute('create table data(id int, value varchar(30), last_modified datetime, created datetime, deleted int)')
+cursor.execute('''
+    create table data(id int, value varchar(30), last_modified
+        datetime, created datetime, `date` varchar(10), deleted int)
+        ''')
 db.commit()
 
 for i in range(10):
-    cursor.execute('insert into data(id, value, last_modified, created) values (%s, %s, now(), now())', [i, chr(ord('A') + i)])
+    cursor.execute('''
+        insert into data(id, value, last_modified, created, `date`) values (%s,
+        %s, now(), now(), date_format(now(), '%%Y-%%m-%%d'))''', [i, chr(ord('A') + i)])
 
 db.commit()
 
@@ -99,9 +105,9 @@ print(count)
 assert count == 10
 
 
-cursor.execute('''
-    insert into data(id, value, last_modified, created) values
-    (11,'L',null,now())''')
+cursor.execute(r'''
+    insert into data(id, value, last_modified, created, `date`) values
+    (11,'L',null,now(), date_format(now(), '%Y-%m-%d'))''')
 
 db.commit()
 
