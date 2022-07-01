@@ -73,7 +73,9 @@ def conn_from_args(spark, args, query=None, use_partitioning=True):
         conn = conn.option('fetchSize', args.fetch_size)
     if args.init:
         conn = conn.option('sessionInitStatement', args.init)
-    
+   
+    pushdownConn = copy.copy(conn).option('pushDownAggregate', 'true')
+
     if query or args.query:
         conn = conn.option('query', query or args.query)
     elif args.dbtable:
@@ -82,9 +84,11 @@ def conn_from_args(spark, args, query=None, use_partitioning=True):
         raise AssertionError('Neither dbtable nor query are available')
     
     if use_partitioning and args.partition_column and args.num_partitions:
-        dfx = copy.copy(conn).option('pushDownAggregate', 'true').load()
-        lower_bound, upper_bound = dfx.select(F.min(args.partition_column),
-            F.max(args.partition_column)).collect()[0]
+        query = 'select min(%s) as lower_bound, max(%s) as upper_bound from %s' % (args.partition_column, args.partition_column, args.dbtable)
+        dfx = pushdownConn.option('query', query).load()
+        bounds = dfx.take(1)
+        lower_bound = bounds.lower_bound
+        upper_bound = bounds.upper_bound
         conn = (conn.option('partitionColumn', args.partition_column)
                 .option('numPartitions', str(args.num_partitions))
                 .option('lowerBound', str(lower_bound))
