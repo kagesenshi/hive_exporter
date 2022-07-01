@@ -55,12 +55,8 @@ def validate_common_args(args):
             'be specified together')
            sys.exit(1)
     
-def conn_from_args(spark, args, query=None, use_partitioning=True):
-    if args.verbose:
-        spark.sparkContext.setLogLevel("INFO")
-    else:
-        spark.sparkContext.setLogLevel("WARN")
-    conn = spark.read.format('jdbc').option('url', args.jdbc)
+def base_conn_from_args(spark, args):
+    spark.read.format('jdbc').option('url', args.jdbc)
     if args.driver:
         conn = conn.option('driver', args.driver)
     if args.username:
@@ -73,8 +69,15 @@ def conn_from_args(spark, args, query=None, use_partitioning=True):
         conn = conn.option('fetchSize', args.fetch_size)
     if args.init:
         conn = conn.option('sessionInitStatement', args.init)
-   
-    pushdownConn = copy.copy(conn).option('pushDownAggregate', 'true')
+    return conn
+
+def conn_from_args(spark, args, query=None, use_partitioning=True):
+    if args.verbose:
+        spark.sparkContext.setLogLevel("INFO")
+    else:
+        spark.sparkContext.setLogLevel("WARN")
+
+    conn = base_conn_from_args(spark, args)
 
     if query or args.query:
         conn = conn.option('query', query or args.query)
@@ -85,8 +88,8 @@ def conn_from_args(spark, args, query=None, use_partitioning=True):
     
     if use_partitioning and args.partition_column and args.num_partitions:
         query = 'select min(%s) as lower_bound, max(%s) as upper_bound from %s' % (args.partition_column, args.partition_column, args.dbtable)
-        dfx = pushdownConn.option('query', query).load()
-        bounds = dfx.take(1)
+        pushdownConn = base_conn_from_args(spark, args)
+        bounds = dfx.take(1)[0]
         lower_bound = bounds.lower_bound
         upper_bound = bounds.upper_bound
         conn = (conn.option('partitionColumn', args.partition_column)
