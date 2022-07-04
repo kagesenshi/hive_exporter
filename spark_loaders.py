@@ -56,7 +56,7 @@ def validate_common_args(args):
            sys.exit(1)
     
 def base_conn_from_args(spark, args):
-    spark.read.format('jdbc').option('url', args.jdbc)
+    conn = spark.read.format('jdbc').option('url', args.jdbc)
     if args.driver:
         conn = conn.option('driver', args.driver)
     if args.username:
@@ -89,9 +89,13 @@ def conn_from_args(spark, args, query=None, use_partitioning=True):
     if use_partitioning and args.partition_column and args.num_partitions:
         query = 'select min(%s) as lower_bound, max(%s) as upper_bound from %s' % (args.partition_column, args.partition_column, args.dbtable)
         pushdownConn = base_conn_from_args(spark, args)
+        dfx = pushdownConn.option('query', query).load()
+        log.info('Getting lower and upper bound of %s' % args.partition_column)
         bounds = dfx.take(1)[0]
         lower_bound = bounds.lower_bound
         upper_bound = bounds.upper_bound
+        log.info('Lower bound = %s' % lower_bound)
+        log.info('Upper bound = %s' % upper_bound)
         conn = (conn.option('partitionColumn', args.partition_column)
                 .option('numPartitions', str(args.num_partitions))
                 .option('lowerBound', str(lower_bound))
@@ -115,9 +119,10 @@ def full_ingestion(spark, df, hive_db, hive_tbl, drop=False,
     db, tbl = hive_db, hive_tbl
     
     df = df.withColumn(ingestion_tag_column, F.lit(datetime.now().strftime('%Y%m%dT%H%M%S')))
+    log.info('Ingesting into spark persistence cache')
     df = df.persist()
+    log.info('Persistence done')
     df.createOrReplaceTempView('import_tbl')
-    log.info('show count %s' % tbl)
     new_rows = df.count()
     log.info("Ingesting %s new rows" % new_rows)
     
