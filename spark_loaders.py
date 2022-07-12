@@ -92,8 +92,8 @@ def conn_from_args(spark, args, query=None, use_partitioning=True):
         dfx = pushdownConn.option('query', query).load()
         log.info('Getting lower and upper bound of %s' % args.partition_column)
         bounds = dfx.take(1)[0]
-        lower_bound = bounds.lower_bound
-        upper_bound = bounds.upper_bound
+        lower_bound = bounds[0]
+        upper_bound = bounds[1]
         log.info('Lower bound = %s' % lower_bound)
         log.info('Upper bound = %s' % upper_bound)
         conn = (conn.option('partitionColumn', args.partition_column)
